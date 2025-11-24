@@ -1,0 +1,38 @@
+{
+  "name": "tiktok-audyt-secure-proxy",
+  "version": "1.0.0",
+  "description": "Secure API proxy for TikTok Audyt with CORS, CSRF, and rate limiting",
+  "main": "server.ts",
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "ts-node server.ts",
+    "build": "tsc",
+    "watch": "ts-node --watch server.ts"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "cookie-parser": "^1.4.6"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/cookie-parser": "^1.4.6",
+    "@types/node": "^20.10.4",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "security",
+    "proxy",
+    "cors",
+    "csrf",
+    "rate-limiting",
+    "tiktok",
+    "api"
+  ],
+  "author": "TikTok Audyt",
+  "license": "MIT"
+}

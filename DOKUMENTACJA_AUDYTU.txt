@@ -1,0 +1,209 @@
+# DOKUMENTACJA AUDYTU TIKTOK - SPECYFIKACJA TECHNICZNA
+# =======================================================
+
+## 1. SCHEMAT DANYCH WEJŚCIOWYCH (APIFY JSON)
+
+### 1.1. Dane wideo
+```ts
+type VideoItem = {
+  id: string;
+  webVideoUrl: string;
+  text: string;                 // opis / caption
+  hashtags?: { name: string }[];
+  playCount: number;
+  diggCount: number;            // lajki
+  commentCount: number;
+  shareCount: number;
+  collectCount: number;         // zapisy
+  videoMeta: {
+    duration: number;           // sekundy
+  };
+  authorMeta: {
+    id: string;
+    name: string;
+    nickName: string;
+    fans: number;
+    bioLink: string;
+  };
+};
+```
+
+### 1.2. Dane komentarzy
+```ts
+type CommentItem = {
+  videoWebUrl: string;
+  cid: string;
+  text: string;
+  diggCount: number;
+  replyCommentTotal: number;
+  likedByAuthor?: boolean;
+  pinnedByAuthor?: boolean;
+  uid: string;
+  uniqueId: string;
+  repliesToId?: string | null;
+};
+```
+
+---
+
+## 2. OBLICZENIA W BACKENDZIE (BEZ LLM)
+
+### 2.1. Engagement Rate
+```ts
+engagementRate = (likes + comments + shares + saves) / views
+```
+
+### 2.2. Flagi logiczne
+- `engagementBelowNiche` - jeśli avgEngagement < 1.5%
+- `engagementAboveNiche` - jeśli avgEngagement > 3.5%
+- `durationTooLong` - jeśli większość filmów > 35-40s
+- `durationTooShort` - jeśli większość filmów < 7-10s
+- `missingHashtags` - jeśli duży procent filmów bez hashtagów
+- `hasShopPotential` - jeśli jest link w bio + spójna nisza produktowa
+
+### 2.3. Statystyki hashtagów
+```ts
+const avgHashtags = totalTags / totalVideos;
+const noHashtagsShare = videosWithNoHashtags / totalVideos;
+const genericTags = ["fyp", "foryou", "viral", "trend", "xyzbca"];
+const genericShare = genericCount / allTags.length;
+```
+
+---
+
+## 3. SCHEMAT ODPOWIEDZI LLM
+
+### 3.1. Audyt profilu
+```ts
+type ProfileAuditResult = {
+  summary: string;
+  strengths: string[];
+  mistakes: string[];
+  video_ideas: string[];
+  hashtag_feedback_text: string;
+  tiktok_shop_tips_text: string;
+  format_insights_text: string;
+  cta_analysis_text: string;
+  seo_analysis_text: string;
+  content_niche_alignment_text: string;
+  content_mix_recommendations: string;
+};
+```
+
+### 3.2. Audyt pojedynczego wideo
+```ts
+type VideoAuditLLMResult = {
+  video_summary: string;
+  performance_text: string;
+  format_insights_text: string;
+  cta_effectiveness_text: string;
+  cta_examples_suggestions: string[];
+  comment_engagement_text: string;
+  audience_questions: string[];
+  product_feedback: string[];
+  content_ideas_from_comments: string[];
+  controversies_and_risks: string[];
+};
+```
+
+---
+
+## 4. PROMPTY DLA LLM
+
+### 4.1. System Message - Audyt Profilu
+```
+Jesteś ekspertem od analizy TikTok.
+Analizujesz profil na podstawie danych, które otrzymujesz.
+Nie masz dostępu do retencji, watchtime ani demografii - nie odwołuj się do nich.
+
+Możesz oceniać:
+- niszę i tematykę filmów
+- jakość opisów
+- długość filmów
+- statystyki zaangażowania
+- hashtagi
+- potencjał TikTok Shop
+- jakość CTA w opisach
+- SEO pod TikTok Search
+
+Zawsze odpowiadaj TYLKO poprawnym JSON zgodnie ze schematem.
+Wszystkie pola muszą być TEKSTOWE - nie generuj liczb.
+```
+
+### 4.2. System Message - Audyt Komentarzy
+```
+Jesteś ekspertem od analizy komentarzy na TikTok.
+Na podstawie listy komentarzy wskaż wnioski i realne insighty.
+Zawsze odpowiadaj TYLKO w JSON.
+```
+
+---
+
+## 5. CZEGO NIE MA W DANYCH APIFY
+
+LLM NIE może mówić o:
+- retencji 3s, 5s, 15s
+- średniej długości oglądania
+- momentu drop-off
+- demografii widzów
+- godzinach publikacji
+- źródłach ruchu (For You / Following / Search)
+
+LLM MOŻE mówić o:
+- długości filmów vs typowy sweet spot (15-30s)
+- poziomie zaangażowania
+- jakości opisów i hashtagów
+- spójności niszy
+
+---
+
+## 6. BEZPIECZNE DOMKNIĘCIE WARTOŚCI
+
+Backend zawsze domyka puste pola:
+```ts
+audit.hashtag_feedback_text = audit.hashtag_feedback_text?.trim()
+  || "Warto dopracować strategię hashtagów...";
+```
+
+---
+
+## 7. WYWOŁANIE OPENAI
+
+```ts
+const response = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  temperature: 0.7,
+  response_format: { type: "json_object" },
+  messages: [
+    { role: "system", content: systemMessage },
+    { role: "user", content: userMessage }
+  ]
+});
+```
+
+---
+
+## 8. SEKCJE UI
+
+### Audyt Profilu:
+- Podsumowanie
+- Mocne strony
+- Do poprawy
+- Pomysły na filmy
+- Hashtagi
+- TikTok Shop
+- Format treści
+- CTA & Interakcje
+- TikTok SEO
+- Zgodność z niszą
+
+### Audyt Wideo:
+- Podsumowanie wideo
+- Wydajność vs profil
+- Format treści
+- CTA & Interakcje
+- Jakość dyskusji
+- Pytania widzów
+- Feedback produktowy
+- Pomysły na nowe filmy
+- Kontrowersje i ryzyka
