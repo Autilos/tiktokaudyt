@@ -35,7 +35,10 @@ const SECURITY_CONFIG = {
   SERVER_SECRET: process.env.SERVER_SECRET || 'default-dev-secret-change-in-production',
 
   // Admin IPs
-  ADMIN_IPS: ['139.28.40.138']
+  ADMIN_IPS: ['139.28.40.138'],
+
+  // Unlimited access emails (no search limits)
+  UNLIMITED_EMAILS: ['wojtekapp@gmail.com']
 };
 
 // CSRF token storage (in production, use Redis or similar)
@@ -43,8 +46,8 @@ const csrfTokens = new Map<string, number>(); // token -> expiry timestamp
 
 // Demo mode: track anonymous usage by IP (in production, use Redis)
 const demoUsageByIp = new Map<string, { count: number; date: string }>(); // IP -> { count, date }
-const DEMO_DAILY_LIMIT = 2; // Max searches per day for anonymous users
-const DEMO_MAX_RESULTS = 5; // Max results for anonymous users
+const DEMO_DAILY_LIMIT = 100; // Max searches per day for anonymous users (effectively unlimited)
+const DEMO_MAX_RESULTS = 40; // Max results for anonymous users
 
 // Middleware: Security headers
 app.use(helmet({
@@ -269,17 +272,62 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
           });
 
           if (!userResponse.ok) {
-            console.error('❌ Token verification failed:', userResponse.status, await userResponse.text());
-            return res.status(401).json({
-              error: {
-                code: 'INVALID_TOKEN',
-                message: 'Nieprawidłowy token. Zaloguj się ponownie.'
-              }
-            });
-          }
+            // Token is invalid - fallback to demo mode instead of returning error
+            console.warn('⚠️ Token verification failed, falling back to demo mode:', userResponse.status);
+            isDemoMode = true;
+
+            // Check demo usage limits by IP (same as anonymous user)
+            const today = new Date().toISOString().slice(0, 10);
+            const ipUsage = demoUsageByIp.get(clientIp);
+
+            // Reset counter if it's a new day
+            if (!ipUsage || ipUsage.date !== today) {
+              demoUsageByIp.set(clientIp, { count: 0, date: today });
+            }
+
+            const currentUsage = demoUsageByIp.get(clientIp)!;
+
+            if (currentUsage.count >= DEMO_DAILY_LIMIT) {
+              logSecurityEvent('demo_limit_exceeded', {
+                ip: clientIp,
+                count: currentUsage.count,
+                limit: DEMO_DAILY_LIMIT,
+                reason: 'invalid_token_fallback'
+              }, req);
+
+              return res.status(429).json({
+                error: {
+                  code: 'DEMO_LIMIT_EXCEEDED',
+                  message: `Wykorzystano dzienny limit ${DEMO_DAILY_LIMIT} bezpłatnych wyszukiwań. Zaloguj się, aby uzyskać więcej wyszukiwań lub spróbuj jutro.`,
+                  dailyUsage: currentUsage.count,
+                  dailyLimit: DEMO_DAILY_LIMIT
+                }
+              });
+            }
+
+            // Enforce demo results limit
+            const resultsLimit = req.body?.resultsLimit || 0;
+            if (resultsLimit > DEMO_MAX_RESULTS) {
+              req.body.resultsLimit = DEMO_MAX_RESULTS;
+              console.log(`🎭 Demo mode (invalid token): Capped results from ${resultsLimit} to ${DEMO_MAX_RESULTS}`);
+            }
+
+            // Increment demo usage counter
+            currentUsage.count++;
+            demoUsageByIp.set(clientIp, currentUsage);
+
+            console.log(`🎭 Demo mode (invalid token): IP ${clientIp} usage: ${currentUsage.count}/${DEMO_DAILY_LIMIT} today`);
+          } else {
 
           const userData = (await userResponse.json()) as any;
           const userId = userData.id;
+          const userEmail = userData.email;
+
+          // Check if user email is in unlimited list
+          const isUnlimitedEmail = SECURITY_CONFIG.UNLIMITED_EMAILS.includes(userEmail);
+          if (isUnlimitedEmail) {
+            console.log(`✅ Unlimited email ${userEmail} - bypassing limits`);
+          }
 
           // Check if user is admin in app_users table
           const appUserResponse = await fetch(
@@ -316,11 +364,13 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
           const subscriptions = (await subsResponse.json()) as any[];
           const userPlan = subscriptions?.[0]?.plan || 'free';
 
-          // Skip limits for admin users or unlimited plan users
+          // Skip limits for admin users, unlimited plan users, or unlimited emails
           if (userRole === 'admin') {
             console.log(`✅ Admin user ${userId} - bypassing limits`);
           } else if (userPlan === 'unlimited') {
             console.log(`✅ Unlimited plan user ${userId} - bypassing limits`);
+          } else if (isUnlimitedEmail) {
+            // Already logged above, just skip limits
           } else {
             // Check TOTAL usage for regular users (not daily, but lifetime)
             const runsResponse = await fetch(
@@ -379,6 +429,7 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
 
             console.log(`📊 User ${userId} usage: ${totalSearches}/${TOTAL_LIMIT} searches total`);
           }
+          } // end of else (valid token)
         }
       } catch (limitError: any) {
         console.error('Error checking usage limits:', limitError);

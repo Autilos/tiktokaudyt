@@ -116,9 +116,14 @@ export function HomePage() {
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || anonKey}`,
         'apikey': anonKey
       };
+
+      // Only add Authorization header if user has a valid session
+      // Without it, proxy will use demo mode
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
 
       // Add CSRF token if available
       try {
