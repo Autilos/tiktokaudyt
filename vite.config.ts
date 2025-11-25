@@ -6,8 +6,9 @@ import sourceIdentifierPlugin from 'vite-plugin-source-identifier'
 const isProd = process.env.BUILD_MODE === 'prod'
 
 export default defineConfig({
+  base: '/tiktokaudyt/', // GitHub Pages base path
   plugins: [
-    react(), 
+    react(),
     sourceIdentifierPlugin({
       enabled: !isProd,
       attributePrefix: 'data-matrix',
