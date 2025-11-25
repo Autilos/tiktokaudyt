@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -9,6 +9,7 @@ import { AnalyticsCharts } from '../components/AnalyticsCharts';
 import { ProfileAudit } from '../components/ProfileAudit';
 import { TikTokLoader } from '../components/TikTokLoader';
 import { secureFetch, checkClientRateLimit, logSecurityEvent, getCsrfToken } from '../lib/security';
+import { getDailyUsageStats } from '../lib/api';
 import { LayoutDashboard, LogOut } from 'lucide-react';
 
 interface ScrapingResult {
@@ -64,7 +65,15 @@ export function HomePage() {
   const [videoAuditData, setVideoAuditData] = useState<any>(null);
   const [videoAuditLoading, setVideoAuditLoading] = useState(false);
   const [videoAuditError, setVideoAuditError] = useState<string | null>(null);
+  const [usageStats, setUsageStats] = useState<any>(null);
   const { user, signOut } = useAuth();
+
+  // Load usage stats on mount
+  React.useEffect(() => {
+    if (user) {
+      getDailyUsageStats().then(stats => setUsageStats(stats));
+    }
+  }, [user]);
 
   const handleVideoHighlight = (videoId: string | null) => {
     setHighlightedVideoId(videoId);
@@ -444,6 +453,48 @@ export function HomePage() {
         </div>
       </header>
 
+      {/* Usage Stats Banner */}
+      {user && usageStats && !usageStats.isUnlimited && (
+        <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-b border-purple-800/50">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="text-sm">
+                  <span className="text-gray-400">Wykorzystane wyszukiwania:</span>
+                  <span className="ml-2 font-bold text-white">
+                    {usageStats.totalSearches} / {usageStats.totalLimit}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-gray-400">Max wyników:</span>
+                  <span className="ml-2 font-bold text-white">{usageStats.maxResults}</span>
+                </div>
+              </div>
+              {usageStats.remainingSearches === 0 && (
+                <div className="text-sm text-orange-400 font-medium">
+                  ⚠️ Wykorzystano limit bezpłatnych wyszukiwań. Skontaktuj się z administratorem.
+                </div>
+              )}
+              {usageStats.remainingSearches > 0 && usageStats.remainingSearches <= 1 && (
+                <div className="text-sm text-yellow-400 font-medium">
+                  Pozostało {usageStats.remainingSearches} wyszukiwanie
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {user && usageStats && usageStats.isUnlimited && (
+        <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border-b border-yellow-800/50">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-yellow-400 font-bold">✨ Plan No-Limit</span>
+              <span className="text-gray-400">- Nielimitowane wyszukiwania i wyniki</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -452,6 +503,7 @@ export function HomePage() {
             <ScraperForm
               onScrape={handleScrape}
               loading={loading}
+              maxResults={usageStats?.maxResults || 10}
               onModeChange={(mode) => {
                 console.log('HomePage received mode change:', mode);
                 setCurrentMode(mode);

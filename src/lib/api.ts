@@ -60,3 +60,50 @@ export async function getRuns(from?: string, to?: string, limit = 500) {
   if (error) throw error;
   return data ?? [];
 }
+
+export async function getDailyUsageStats() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // Get user's subscription plan
+  const { data: subs } = await supabase
+    .from('subscriptions')
+    .select('plan, limit_events')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .order('starts_at', { ascending: false })
+    .maybeSingle();
+
+  const plan = subs?.plan || 'free';
+  const isUnlimited = plan === 'unlimited';
+
+  if (isUnlimited) {
+    return {
+      plan,
+      isUnlimited: true,
+      totalSearches: 0,
+      totalLimit: Infinity,
+      maxResults: Infinity,
+      remainingSearches: Infinity
+    };
+  }
+
+  // Get TOTAL usage (not daily)
+  const { count } = await supabase
+    .from('runs')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id);
+
+  const totalSearches = count || 0;
+  const totalLimit = 3;
+  const maxResults = 10;
+
+  return {
+    plan,
+    isUnlimited: false,
+    totalSearches,
+    totalLimit,
+    maxResults,
+    remainingSearches: Math.max(0, totalLimit - totalSearches)
+  };
+}

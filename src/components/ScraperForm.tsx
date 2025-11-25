@@ -4,13 +4,14 @@ import { Hash, User, Search, Video, Play } from 'lucide-react';
 interface ScraperFormProps {
   onScrape: (formData: any) => void;
   loading: boolean;
+  maxResults?: number;
   onModeChange?: (mode: string) => void;
 }
 
-export function ScraperForm({ onScrape, loading, onModeChange }: ScraperFormProps) {
+export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }: ScraperFormProps) {
   const [mode, setMode] = useState<'hashtag' | 'profile' | 'search' | 'video'>('hashtag');
   const [inputText, setInputText] = useState('');
-  const [resultsPerPage, setResultsPerPage] = useState(10);
+  const [resultsPerPage, setResultsPerPage] = useState(Math.min(10, maxResults));
   const [excludePinnedPosts, setExcludePinnedPosts] = useState(false);
   const [proxyCountry, setProxyCountry] = useState('none');
 
@@ -163,11 +164,11 @@ export function ScraperForm({ onScrape, loading, onModeChange }: ScraperFormProp
                   console.log('Button clicked:', modeType);
                   handleModeChange(modeType);
                 }}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all ${
-                  mode === modeType
-                    ? 'bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                }`}
+                className={`flex items - center justify - center gap - 2 px - 3 py - 2 rounded - lg border transition - all ${
+  mode === modeType
+    ? 'bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white'
+    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
+} `}
               >
                 {getModeIcon(modeType)}
                 <span className="text-sm font-medium">{getModeLabel(modeType)}</span>
@@ -255,11 +256,11 @@ export function ScraperForm({ onScrape, loading, onModeChange }: ScraperFormProp
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-            loading
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-              : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-900/50'
-          }`}
+          className={`w - full py - 3 px - 4 rounded - lg font - medium transition - all flex items - center justify - center gap - 2 ${
+  loading
+    ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+    : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-900/50'
+} `}
         >
           {loading ? (
             <>

@@ -194,6 +194,126 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
     const clientIp = getClientIp(req);
     const isAdmin = isAdminIp(clientIp);
 
+    // USAGE LIMIT CHECK (skip for admin IPs)
+    if (!isAdmin) {
+      try {
+        // Extract user_id from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: {
+              code: 'UNAUTHORIZED',
+              message: 'Wymagane logowanie. Zaloguj się, aby korzystać z aplikacji.'
+            }
+          });
+        }
+
+        const token = authHeader.substring(7);
+
+        // Verify token and get user_id using Supabase
+        const userResponse = await fetch(`${SECURITY_CONFIG.SUPABASE_URL}/auth/v1/user`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || ''
+          }
+        });
+
+        if (!userResponse.ok) {
+          return res.status(401).json({
+            error: {
+              code: 'INVALID_TOKEN',
+              message: 'Nieprawidłowy token. Zaloguj się ponownie.'
+            }
+          });
+        }
+
+        const userData = await userResponse.json();
+        const userId = userData.id;
+
+        // Check user's subscription plan
+        const subsResponse = await fetch(
+          `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/subscriptions?user_id=eq.${userId}&status=eq.active&order=starts_at.desc&limit=1`,
+          {
+            headers: {
+              'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+
+        const subscriptions = await subsResponse.json();
+        const userPlan = subscriptions?.[0]?.plan || 'free';
+
+        // Skip limits for unlimited plan users
+        if (userPlan === 'unlimited') {
+          console.log(`✅ Unlimited user ${userId} - bypassing limits`);
+        } else {
+          // Check TOTAL usage for regular users (not daily, but lifetime)
+          const runsResponse = await fetch(
+            `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/runs?user_id=eq.${userId}&select=id`,
+            {
+              headers: {
+                'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
+                'Authorization': `Bearer ${token}`,
+                'Prefer': 'count=exact'
+              }
+            }
+          );
+
+          const runsCountHeader = runsResponse.headers.get('content-range');
+          const totalSearches = runsCountHeader ? parseInt(runsCountHeader.split('/')[1]) : 0;
+
+          const TOTAL_LIMIT = 3;
+
+          if (totalSearches >= TOTAL_LIMIT) {
+            logSecurityEvent('total_limit_exceeded', {
+              userId,
+              totalSearches,
+              limit: TOTAL_LIMIT
+            }, req);
+
+            return res.status(429).json({
+              error: {
+                code: 'TOTAL_LIMIT_EXCEEDED',
+                message: `Wykorzystano limit ${TOTAL_LIMIT} bezpłatnych wyszukiwań. Skontaktuj się z administratorem w celu uzyskania nielimitowanego dostępu.`,
+                totalSearches,
+                totalLimit: TOTAL_LIMIT
+              }
+            });
+          }
+
+          // Validate resultsLimit in request body
+          const resultsLimit = req.body?.resultsLimit || 0;
+          const MAX_RESULTS = 10;
+
+          if (resultsLimit > MAX_RESULTS) {
+            logSecurityEvent('results_limit_exceeded', {
+              userId,
+              requestedLimit: resultsLimit,
+              maxLimit: MAX_RESULTS
+            }, req);
+
+            return res.status(400).json({
+              error: {
+                code: 'RESULTS_LIMIT_EXCEEDED',
+                message: `Maksymalna liczba wyników to ${MAX_RESULTS}. Zmniejsz liczbę wyników lub skontaktuj się z administratorem.`,
+                requestedLimit: resultsLimit,
+                maxLimit: MAX_RESULTS
+              }
+            });
+          }
+
+          console.log(`📊 User ${userId} usage: ${totalSearches}/${TOTAL_LIMIT} searches total`);
+        }
+      } catch (limitError: any) {
+        console.error('Error checking usage limits:', limitError);
+        // Continue with request if limit check fails (fail open for better UX)
+        logSecurityEvent('limit_check_error', {
+          error: limitError.message
+        }, req);
+      }
+    }
+
     // CSRF verification (bypass for admin IPs)
     if (!isAdmin) {
       const csrfToken = req.headers['x-csrf-token'] as string;
