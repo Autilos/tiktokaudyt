@@ -167,18 +167,26 @@ audit.hashtag_feedback_text = audit.hashtag_feedback_text?.trim()
 
 ---
 
-## 7. WYWOŁANIE OPENAI
+## 7. WYWOŁANIE LLM API
 
 ```ts
-const response = await openai.chat.completions.create({
-  model: "gpt-4",  // ZMIANA: z "gpt-4o-mini" na "gpt-4"
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: Deno.env.get('ANTHROPIC_API_KEY'),
+});
+
+const response = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  max_tokens: 4096,
   temperature: 0.7,
-  response_format: { type: "json_object" },
+  system: systemMessage,
   messages: [
-    { role: "system", content: systemMessage },
     { role: "user", content: userMessage }
   ]
 });
+
+const auditData = JSON.parse(response.content[0].text);
 ```
 
 UWAGA: Szczegółowe, ulepszone prompty znajdują się w pliku PROMPTY_AUDYT_KOMENTARZY.md

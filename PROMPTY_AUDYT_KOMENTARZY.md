@@ -2,20 +2,39 @@
 
 ## 1. ZMIANA MODELU
 
-**Stary model:** `gpt-4o-mini`  
-**Nowy model:** `gpt-4` (lub `gpt-4-turbo` dla lepszej wydajności)
+**Stary model:** `gpt-4o-mini` (OpenAI)  
+**Nowy model:** `claude-3-5-sonnet-20241022` (Anthropic)
 
 ```typescript
-const response = await openai.chat.completions.create({
-  model: "gpt-4",  // ZMIANA: z "gpt-4o-mini" na "gpt-4"
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: Deno.env.get('ANTHROPIC_API_KEY'),
+});
+
+const response = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  max_tokens: 4096,
   temperature: 0.7,
-  response_format: { type: "json_object" },
+  system: systemMessage,  // System message jako osobny parametr
   messages: [
-    { role: "system", content: systemMessage },
-    { role: "user", content: userMessage }
+    {
+      role: "user",
+      content: userMessage
+    }
   ]
 });
+
+// Wyciągnij JSON z odpowiedzi
+const responseText = response.content[0].text;
+const auditData = JSON.parse(responseText);
 ```
+
+**Wymagane zmiany w Supabase:**
+1. Dodaj `ANTHROPIC_API_KEY` do Supabase Secrets
+2. Zainstaluj `@anthropic-ai/sdk` w Edge Function
+3. Zmień wywołanie API z OpenAI na Anthropic
+
 
 ---
 
@@ -48,8 +67,11 @@ WAŻNE:
 - Unikaj ogólników typu "widzowie są zainteresowani"
 - Cytuj konkretne komentarze jeśli to wzmacnia argument
 
-Zawsze odpowiadaj TYLKO w formacie JSON zgodnym ze schematem.
+ZAWSZE odpowiadaj w formacie JSON. Zacznij odpowiedź od { i zakończ na }.
 ```
+
+**Uwaga dla Claude:** Claude nie ma natywnego JSON mode jak GPT-4, ale jest bardzo dobry w generowaniu poprawnego JSON gdy się go o to poprosi. Dodaj na końcu user message: "Odpowiedz TYLKO w formacie JSON, bez dodatkowego tekstu."
+
 
 ### User Message Template
 
@@ -92,8 +114,11 @@ Przeanalizuj te komentarze i zwróć JSON z następującymi polami:
 }
 
 WAŻNE: Jeśli w danej kategorii nie ma wartościowych danych, zwróć pustą tablicę [].
+
+Odpowiedz TYLKO w formacie JSON, bez dodatkowego tekstu. Zacznij od { i zakończ na }.
 `;
 ```
+
 
 ---
 
@@ -124,16 +149,30 @@ type VideoAuditLLMResult = {
 ### Kod do aktualizacji
 
 ```typescript
-// Zmień model
-const response = await openai.chat.completions.create({
-  model: "gpt-4",  // ZMIANA: było "gpt-4o-mini"
+import Anthropic from '@anthropic-ai/sdk';
+
+// Inicjalizacja klienta Anthropic
+const anthropic = new Anthropic({
+  apiKey: Deno.env.get('ANTHROPIC_API_KEY'),
+});
+
+// Wywołanie API
+const response = await anthropic.messages.create({
+  model: "claude-3-5-sonnet-20241022",
+  max_tokens: 4096,
   temperature: 0.7,
-  response_format: { type: "json_object" },
+  system: IMPROVED_SYSTEM_MESSAGE,  // System message jako osobny parametr
   messages: [
-    { role: "system", content: IMPROVED_SYSTEM_MESSAGE },
-    { role: "user", content: constructUserMessage(videoData, comments) }
+    {
+      role: "user",
+      content: constructUserMessage(videoData, comments)
+    }
   ]
 });
+
+// Parsowanie odpowiedzi
+const responseText = response.content[0].text;
+const auditData = JSON.parse(responseText);
 
 // Dodaj nowe prompty
 const IMPROVED_SYSTEM_MESSAGE = `
@@ -145,7 +184,19 @@ function constructUserMessage(videoData, comments) {
   return `
 Przeanalizuj komentarze pod filmem TikTok i wyciągnij praktyczne wnioski.
 [... reszta promptu jak powyżej ...]
+Odpowiedz TYLKO w formacie JSON, bez dodatkowego tekstu. Zacznij od { i zakończ na }.
   `;
+}
+```
+
+### Instalacja zależności
+
+W `supabase/functions/video-analyzer/` utwórz `import_map.json`:
+```json
+{
+  "imports": {
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@^0.20.0"
+  }
 }
 ```
 
@@ -153,22 +204,29 @@ Przeanalizuj komentarze pod filmem TikTok i wyciągnij praktyczne wnioski.
 
 ## 5. JAK WDROŻYĆ
 
-### Krok 1: Zaloguj się do Supabase Dashboard
-```
-https://supabase.com/dashboard/project/xcbufsemfbklgbcmkitn
+### Krok 1: Dodaj ANTHROPIC_API_KEY do Supabase
+```bash
+# Zaloguj się do Supabase CLI
+supabase login
+
+# Dodaj secret
+supabase secrets set ANTHROPIC_API_KEY=your-anthropic-api-key-here
 ```
 
-### Krok 2: Przejdź do Edge Functions
+Lub przez Dashboard:
 ```
-Edge Functions → video-analyzer → Edit
+https://supabase.com/dashboard/project/xcbufsemfbklgbcmkitn/settings/vault
+→ Secrets → Add new secret
+→ Name: ANTHROPIC_API_KEY
+→ Value: sk-ant-...
 ```
 
-### Krok 3: Zaktualizuj kod
-1. Zmień `model: "gpt-4o-mini"` na `model: "gpt-4"`
-2. Zastąp stary system message nowym (z tego dokumentu)
-3. Zaktualizuj user message template
+### Krok 2: Zaktualizuj Edge Function
+1. Zmień import z OpenAI na Anthropic
+2. Zmień wywołanie API (jak w sekcji 4)
+3. Dodaj `import_map.json` z zależnością Anthropic SDK
 
-### Krok 4: Wdróż funkcję
+### Krok 3: Wdróż funkcję
 ```bash
 supabase functions deploy video-analyzer
 ```
@@ -177,19 +235,33 @@ supabase functions deploy video-analyzer
 
 ## 6. KOSZTY
 
-**GPT-4o-mini:**
+**GPT-4o-mini (poprzedni):**
 - Input: $0.15 / 1M tokens
 - Output: $0.60 / 1M tokens
+- Koszt na audyt: ~$0.01-0.02
 
-**GPT-4:**
-- Input: $30 / 1M tokens (200x drożej)
-- Output: $60 / 1M tokens (100x drożej)
+**Claude 3.5 Sonnet (nowy):**
+- Input: $3 / 1M tokens
+- Output: $15 / 1M tokens
+- Koszt na audyt: ~$0.03-0.06
 
-**Szacunkowy koszt na 1 audyt:**
-- GPT-4o-mini: ~$0.01-0.02
-- GPT-4: ~$0.20-0.40
+**GPT-4 (alternatywa):**
+- Input: $30 / 1M tokens
+- Output: $60 / 1M tokens
+- Koszt na audyt: ~$0.20-0.40
 
-**Rekomendacja:** Jeśli chcesz lepszej jakości ale niższych kosztów, rozważ `gpt-4-turbo` który jest 2x tańszy od GPT-4.
+**Porównanie:**
+- Claude 3.5 Sonnet jest **3x droższy** niż GPT-4o-mini
+- Claude 3.5 Sonnet jest **6-10x tańszy** niż GPT-4
+- Claude 3.5 Sonnet oferuje **lepszą jakość** niż GPT-4o-mini
+- Claude 3.5 Sonnet ma **podobną jakość** do GPT-4 przy znacznie niższych kosztach
+
+**Szacunkowy miesięczny koszt:**
+- 100 audytów/miesiąc: ~$3-6
+- 500 audytów/miesiąc: ~$15-30
+- 1000 audytów/miesiąc: ~$30-60
+
+**Rekomendacja:** Claude 3.5 Sonnet to najlepszy balans jakości i ceny.
 
 ---
 
