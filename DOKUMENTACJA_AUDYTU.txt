@@ -171,7 +171,7 @@ audit.hashtag_feedback_text = audit.hashtag_feedback_text?.trim()
 
 ```ts
 const response = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
+  model: "gpt-4",  // ZMIANA: z "gpt-4o-mini" na "gpt-4"
   temperature: 0.7,
   response_format: { type: "json_object" },
   messages: [
@@ -180,6 +180,9 @@ const response = await openai.chat.completions.create({
   ]
 });
 ```
+
+UWAGA: Szczegółowe, ulepszone prompty znajdują się w pliku PROMPTY_AUDYT_KOMENTARZY.md
+
 
 ---
 
