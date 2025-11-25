@@ -1,16 +1,15 @@
-import { supabase } from './supabase';
+import { supabase } from './supabaseClient';
+import {
+  getActiveSubscription,
+  getAppUserRole,
+  getUserRunsCount
+} from '../services';
 
 export async function getCurrentPlanAndUsage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: subs } = await supabase
-    .from('subscriptions')
-    .select('plan, limit_events, status, price_pln')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .maybeSingle();
+  const { data: subs } = await getActiveSubscription(user.id);
 
   const { data: usageData } = await supabase.rpc('current_month_usage');
   const usage = usageData?.[0] || { events: 0, usd: 0 };
@@ -65,21 +64,19 @@ export async function getDailyUsageStats() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // Get user's subscription plan
-  const { data: subs } = await supabase
-    .from('subscriptions')
-    .select('plan, limit_events')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .order('starts_at', { ascending: false })
-    .maybeSingle();
+  // Check if user is admin using service
+  const role = await getAppUserRole(user.id);
+  const isAdminUser = role === 'admin';
+
+  // Get user's subscription plan using service
+  const { data: subs } = await getActiveSubscription(user.id);
 
   const plan = subs?.plan || 'free';
-  const isUnlimited = plan === 'unlimited';
+  const isUnlimited = plan === 'unlimited' || isAdminUser;
 
   if (isUnlimited) {
     return {
-      plan,
+      plan: isAdminUser ? 'admin' : plan,
       isUnlimited: true,
       totalSearches: 0,
       totalLimit: Infinity,
@@ -88,13 +85,9 @@ export async function getDailyUsageStats() {
     };
   }
 
-  // Get TOTAL usage (not daily)
-  const { count } = await supabase
-    .from('runs')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id);
+  // Get TOTAL usage using service
+  const totalSearches = await getUserRunsCount(user.id);
 
-  const totalSearches = count || 0;
   const totalLimit = 3;
   const maxResults = 10;
 

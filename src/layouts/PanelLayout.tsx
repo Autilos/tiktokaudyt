@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { isAdmin as checkIsAdmin } from '../services';
 import { LayoutDashboard, CreditCard, BarChart3, History, LogOut, Shield, ArrowLeft } from 'lucide-react';
 
 export function PanelLayout() {
@@ -16,14 +16,8 @@ export function PanelLayout() {
 
   const checkAdminStatus = async () => {
     if (!user) return;
-
-    const { data } = await supabase
-      .from('app_users')
-      .select('role')
-      .eq('user_id', user.id)
-      .single();
-
-    setIsAdmin(data?.role === 'admin');
+    const adminStatus = await checkIsAdmin(user.id);
+    setIsAdmin(adminStatus);
   };
 
   const handleSignOut = async () => {

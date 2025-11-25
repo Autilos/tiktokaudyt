@@ -3,6 +3,9 @@
  * Handles CORS, CSRF, rate limiting, and request routing
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -37,6 +40,11 @@ const SECURITY_CONFIG = {
 
 // CSRF token storage (in production, use Redis or similar)
 const csrfTokens = new Map<string, number>(); // token -> expiry timestamp
+
+// Demo mode: track anonymous usage by IP (in production, use Redis)
+const demoUsageByIp = new Map<string, { count: number; date: string }>(); // IP -> { count, date }
+const DEMO_DAILY_LIMIT = 2; // Max searches per day for anonymous users
+const DEMO_MAX_RESULTS = 5; // Max results for anonymous users
 
 // Middleware: Security headers
 app.use(helmet({
@@ -195,115 +203,182 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
     const isAdmin = isAdminIp(clientIp);
 
     // USAGE LIMIT CHECK (skip for admin IPs)
+    let isDemoMode = false;
     if (!isAdmin) {
       try {
         // Extract user_id from Authorization header
         const authHeader = req.headers.authorization;
+
+        // DEMO MODE: Allow anonymous users with limited access
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          return res.status(401).json({
-            error: {
-              code: 'UNAUTHORIZED',
-              message: 'Wymagane logowanie. Zaloguj się, aby korzystać z aplikacji.'
-            }
-          });
-        }
+          console.log('🎭 Demo mode: Anonymous user detected');
+          isDemoMode = true;
 
-        const token = authHeader.substring(7);
+          // Check demo usage limits by IP
+          const today = new Date().toISOString().slice(0, 10);
+          const ipUsage = demoUsageByIp.get(clientIp);
 
-        // Verify token and get user_id using Supabase
-        const userResponse = await fetch(`${SECURITY_CONFIG.SUPABASE_URL}/auth/v1/user`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || ''
+          // Reset counter if it's a new day
+          if (!ipUsage || ipUsage.date !== today) {
+            demoUsageByIp.set(clientIp, { count: 0, date: today });
           }
-        });
 
-        if (!userResponse.ok) {
-          return res.status(401).json({
-            error: {
-              code: 'INVALID_TOKEN',
-              message: 'Nieprawidłowy token. Zaloguj się ponownie.'
-            }
-          });
-        }
+          const currentUsage = demoUsageByIp.get(clientIp)!;
 
-        const userData = await userResponse.json();
-        const userId = userData.id;
-
-        // Check user's subscription plan
-        const subsResponse = await fetch(
-          `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/subscriptions?user_id=eq.${userId}&status=eq.active&order=starts_at.desc&limit=1`,
-          {
-            headers: {
-              'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-
-        const subscriptions = await subsResponse.json();
-        const userPlan = subscriptions?.[0]?.plan || 'free';
-
-        // Skip limits for unlimited plan users
-        if (userPlan === 'unlimited') {
-          console.log(`✅ Unlimited user ${userId} - bypassing limits`);
-        } else {
-          // Check TOTAL usage for regular users (not daily, but lifetime)
-          const runsResponse = await fetch(
-            `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/runs?user_id=eq.${userId}&select=id`,
-            {
-              headers: {
-                'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
-                'Authorization': `Bearer ${token}`,
-                'Prefer': 'count=exact'
-              }
-            }
-          );
-
-          const runsCountHeader = runsResponse.headers.get('content-range');
-          const totalSearches = runsCountHeader ? parseInt(runsCountHeader.split('/')[1]) : 0;
-
-          const TOTAL_LIMIT = 3;
-
-          if (totalSearches >= TOTAL_LIMIT) {
-            logSecurityEvent('total_limit_exceeded', {
-              userId,
-              totalSearches,
-              limit: TOTAL_LIMIT
+          if (currentUsage.count >= DEMO_DAILY_LIMIT) {
+            logSecurityEvent('demo_limit_exceeded', {
+              ip: clientIp,
+              count: currentUsage.count,
+              limit: DEMO_DAILY_LIMIT
             }, req);
 
             return res.status(429).json({
               error: {
-                code: 'TOTAL_LIMIT_EXCEEDED',
-                message: `Wykorzystano limit ${TOTAL_LIMIT} bezpłatnych wyszukiwań. Skontaktuj się z administratorem w celu uzyskania nielimitowanego dostępu.`,
-                totalSearches,
-                totalLimit: TOTAL_LIMIT
+                code: 'DEMO_LIMIT_EXCEEDED',
+                message: `Wykorzystano dzienny limit ${DEMO_DAILY_LIMIT} bezpłatnych wyszukiwań. Zaloguj się, aby uzyskać więcej wyszukiwań lub spróbuj jutro.`,
+                dailyUsage: currentUsage.count,
+                dailyLimit: DEMO_DAILY_LIMIT
               }
             });
           }
 
-          // Validate resultsLimit in request body
+          // Enforce demo results limit
           const resultsLimit = req.body?.resultsLimit || 0;
-          const MAX_RESULTS = 10;
+          if (resultsLimit > DEMO_MAX_RESULTS) {
+            // Silently cap the results for demo users
+            req.body.resultsLimit = DEMO_MAX_RESULTS;
+            console.log(`🎭 Demo mode: Capped results from ${resultsLimit} to ${DEMO_MAX_RESULTS}`);
+          }
 
-          if (resultsLimit > MAX_RESULTS) {
-            logSecurityEvent('results_limit_exceeded', {
-              userId,
-              requestedLimit: resultsLimit,
-              maxLimit: MAX_RESULTS
-            }, req);
+          // Increment demo usage counter
+          currentUsage.count++;
+          demoUsageByIp.set(clientIp, currentUsage);
 
-            return res.status(400).json({
+          console.log(`🎭 Demo mode: IP ${clientIp} usage: ${currentUsage.count}/${DEMO_DAILY_LIMIT} today`);
+        } else {
+          // LOGGED IN USER: Normal authentication flow
+          const token = authHeader.substring(7);
+
+          // Verify token and get user_id using Supabase
+          console.log('🔐 Verifying token with Supabase Auth API...');
+          const userResponse = await fetch(`${SECURITY_CONFIG.SUPABASE_URL}/auth/v1/user`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || ''
+            }
+          });
+
+          if (!userResponse.ok) {
+            console.error('❌ Token verification failed:', userResponse.status, await userResponse.text());
+            return res.status(401).json({
               error: {
-                code: 'RESULTS_LIMIT_EXCEEDED',
-                message: `Maksymalna liczba wyników to ${MAX_RESULTS}. Zmniejsz liczbę wyników lub skontaktuj się z administratorem.`,
+                code: 'INVALID_TOKEN',
+                message: 'Nieprawidłowy token. Zaloguj się ponownie.'
+              }
+            });
+          }
+
+          const userData = (await userResponse.json()) as any;
+          const userId = userData.id;
+
+          // Check if user is admin in app_users table
+          const appUserResponse = await fetch(
+            `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/app_users?user_id=eq.${userId}&select=role`,
+            {
+              headers: {
+                'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+
+          const appUsers = (await appUserResponse.json()) as any[];
+          const userRole = appUsers?.[0]?.role || null;
+
+          console.log('🔍 Admin check:', {
+            userId,
+            appUsersResponse: appUsers,
+            userRole,
+            isAdmin: userRole === 'admin'
+          });
+
+          // Check user's subscription plan
+          const subsResponse = await fetch(
+            `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/subscriptions?user_id=eq.${userId}&status=eq.active&order=starts_at.desc&limit=1`,
+            {
+              headers: {
+                'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+
+          const subscriptions = (await subsResponse.json()) as any[];
+          const userPlan = subscriptions?.[0]?.plan || 'free';
+
+          // Skip limits for admin users or unlimited plan users
+          if (userRole === 'admin') {
+            console.log(`✅ Admin user ${userId} - bypassing limits`);
+          } else if (userPlan === 'unlimited') {
+            console.log(`✅ Unlimited plan user ${userId} - bypassing limits`);
+          } else {
+            // Check TOTAL usage for regular users (not daily, but lifetime)
+            const runsResponse = await fetch(
+              `${SECURITY_CONFIG.SUPABASE_URL}/rest/v1/runs?user_id=eq.${userId}&select=id`,
+              {
+                headers: {
+                  'apikey': SECURITY_CONFIG.SUPABASE_ANON_KEY || '',
+                  'Authorization': `Bearer ${token}`,
+                  'Prefer': 'count=exact'
+                }
+              }
+            );
+
+            const runsCountHeader = runsResponse.headers.get('content-range');
+            const totalSearches = runsCountHeader ? parseInt(runsCountHeader.split('/')[1]) : 0;
+
+            const TOTAL_LIMIT = 3;
+
+            if (totalSearches >= TOTAL_LIMIT) {
+              logSecurityEvent('total_limit_exceeded', {
+                userId,
+                totalSearches,
+                limit: TOTAL_LIMIT
+              }, req);
+
+              return res.status(429).json({
+                error: {
+                  code: 'TOTAL_LIMIT_EXCEEDED',
+                  message: `Wykorzystano limit ${TOTAL_LIMIT} bezpłatnych wyszukiwań. Skontaktuj się z administratorem w celu uzyskania nielimitowanego dostępu.`,
+                  totalSearches,
+                  totalLimit: TOTAL_LIMIT
+                }
+              });
+            }
+
+            // Validate resultsLimit in request body
+            const resultsLimit = req.body?.resultsLimit || 0;
+            const MAX_RESULTS = 10;
+
+            if (resultsLimit > MAX_RESULTS) {
+              logSecurityEvent('results_limit_exceeded', {
+                userId,
                 requestedLimit: resultsLimit,
                 maxLimit: MAX_RESULTS
-              }
-            });
-          }
+              }, req);
 
-          console.log(`📊 User ${userId} usage: ${totalSearches}/${TOTAL_LIMIT} searches total`);
+              return res.status(400).json({
+                error: {
+                  code: 'RESULTS_LIMIT_EXCEEDED',
+                  message: `Maksymalna liczba wyników to ${MAX_RESULTS}. Zmniejsz liczbę wyników lub skontaktuj się z administratorem.`,
+                  requestedLimit: resultsLimit,
+                  maxLimit: MAX_RESULTS
+                }
+              });
+            }
+
+            console.log(`📊 User ${userId} usage: ${totalSearches}/${TOTAL_LIMIT} searches total`);
+          }
         }
       } catch (limitError: any) {
         console.error('Error checking usage limits:', limitError);
@@ -314,8 +389,8 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
       }
     }
 
-    // CSRF verification (bypass for admin IPs)
-    if (!isAdmin) {
+    // CSRF verification (bypass for admin IPs and demo mode)
+    if (!isAdmin && !isDemoMode) {
       const csrfToken = req.headers['x-csrf-token'] as string;
       const cookieHash = req.cookies?.csrf_hash;
 
@@ -361,8 +436,8 @@ app.post('/api/:functionName', runLimiter, async (req, res) => {
       }
     }
 
-    // For critical operations, verify HMAC (bypass for admin IPs)
-    if (!isAdmin) {
+    // For critical operations, verify HMAC (bypass for admin IPs and demo mode)
+    if (!isAdmin && !isDemoMode) {
       const nonce = req.headers['x-nonce'] as string;
       const signature = req.headers['x-signature'] as string;
       const body = JSON.stringify(req.body);

@@ -18,8 +18,24 @@ export interface Comment {
   pinnedByAuthor?: boolean;
   uid: string;
   uniqueId: string;
+  // Alternative field names from Apify comments scraper
+  unique_id?: string;
+  nickname?: string;
+  author_nickname?: string;
+  authorName?: string;
   createTimeISO?: string;
   repliesToId?: string | null;
+  // Nested user object (common in TikTok API responses)
+  user?: {
+    uniqueId?: string;
+    unique_id?: string;
+    nickname?: string;
+    id?: string;
+  };
+  // Other possible field names
+  author?: string;
+  username?: string;
+  commentBy?: string;
 }
 
 interface AuditData {
@@ -38,15 +54,22 @@ interface AuditData {
 interface CommentsTableProps {
   comments: Comment[];
   videoUrl?: string;
+  videoThumbnail?: string;
   auditData?: AuditData;
 }
 
-export function CommentsTable({ comments, videoUrl, auditData }: CommentsTableProps) {
+export function CommentsTable({ comments, videoUrl, videoThumbnail, auditData }: CommentsTableProps) {
   // Debug: log auditData to see what we're receiving
   console.log('📊 CommentsTable auditData:', auditData);
   console.log('📊 Has audience_questions:', auditData?.audience_questions?.length);
   console.log('📊 Has product_feedback:', !!auditData?.product_feedback);
   console.log('📊 Has content_ideas:', auditData?.content_ideas_from_comments?.length);
+
+  // Debug: log first comment to see available fields
+  if (comments.length > 0) {
+    console.log('📊 First comment keys:', Object.keys(comments[0]));
+    console.log('📊 First comment sample:', comments[0]);
+  }
 
   const [sortField, setSortField] = useState<'likes' | 'replies' | 'author' | 'date' | null>('likes');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('desc');
@@ -82,8 +105,8 @@ export function CommentsTable({ comments, videoUrl, auditData }: CommentsTablePr
           bValue = b.replyCommentTotal || 0;
           break;
         case 'author':
-          aValue = a.uniqueId?.toLowerCase() || '';
-          bValue = b.uniqueId?.toLowerCase() || '';
+          aValue = (a.uniqueId || a.unique_id || a.nickname || a.author_nickname || a.authorName || a.user?.uniqueId || a.user?.unique_id || a.user?.nickname || a.author || a.username || a.commentBy || '')?.toLowerCase() || '';
+          bValue = (b.uniqueId || b.unique_id || b.nickname || b.author_nickname || b.authorName || b.user?.uniqueId || b.user?.unique_id || b.user?.nickname || b.author || b.username || b.commentBy || '')?.toLowerCase() || '';
           break;
         case 'date':
           aValue = a.createTimeISO || '';
@@ -146,6 +169,9 @@ export function CommentsTable({ comments, videoUrl, auditData }: CommentsTablePr
           product_feedback={auditData.product_feedback}
           content_ideas_from_comments={auditData.content_ideas_from_comments || []}
           controversies_and_risks={auditData.controversies_and_risks}
+          videoUrl={videoUrl}
+          videoThumbnail={videoThumbnail}
+          commentsCount={comments.length}
         />
       )}
 
@@ -258,7 +284,9 @@ export function CommentsTable({ comments, videoUrl, auditData }: CommentsTablePr
                   <td className="p-4">
                     <div className="flex items-center gap-2">
                       <User className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-300">@{comment.uniqueId}</span>
+                      <span className="text-sm text-gray-300">
+                        @{comment.uniqueId || comment.unique_id || comment.nickname || comment.author_nickname || comment.authorName || comment.user?.uniqueId || comment.user?.unique_id || comment.user?.nickname || comment.author || comment.username || comment.commentBy || 'nieznany'}
+                      </span>
                     </div>
                   </td>
                   <td className="p-4">

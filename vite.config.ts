@@ -6,7 +6,7 @@ import sourceIdentifierPlugin from 'vite-plugin-source-identifier'
 const isProd = process.env.BUILD_MODE === 'prod'
 
 export default defineConfig({
-  base: '/tiktokaudyt/', // GitHub Pages base path
+  base: isProd ? '/tiktokaudyt/' : '/', // GitHub Pages base path for prod, root for dev
   plugins: [
     react(),
     sourceIdentifierPlugin({

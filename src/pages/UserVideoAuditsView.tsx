@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { getUserVideoAudits } from '../services';
 import {
   ArrowLeft,
   Calendar,
@@ -13,29 +13,30 @@ import {
   MessageCircle
 } from 'lucide-react';
 
+// Component-specific interface that matches actual API response
 interface VideoAudit {
   id: string;
   created_at: string;
-  video_id: string;
+  video_id?: string;
   video_url: string;
-  video_caption: string;
-  author_username: string;
-  views: number;
-  likes: number;
-  comments_count: number;
-  engagement_rate: number;
+  video_caption?: string;
+  author_username?: string;
+  views?: number;
+  likes?: number;
+  comments_count?: number;
+  engagement_rate?: number;
   total_comments_analyzed: number;
   audit_data: {
-    video_summary: string;
-    performance_text: string;
-    format_insights_text: string;
-    cta_effectiveness_text: string;
-    cta_examples_suggestions: string[];
-    comment_engagement_text: string;
-    audience_questions: string[];
-    product_feedback: string[];
-    content_ideas_from_comments: string[];
-    controversies_and_risks: string[];
+    video_summary?: string;
+    performance_text?: string;
+    format_insights_text?: string;
+    cta_effectiveness_text?: string;
+    cta_examples_suggestions?: string[];
+    comment_engagement_text?: string;
+    audience_questions?: any[];
+    product_feedback?: any;
+    content_ideas_from_comments?: any[];
+    controversies_and_risks?: any;
   };
 }
 
@@ -55,15 +56,12 @@ export function UserVideoAuditsView() {
   const fetchAudits = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('video_audits')
-        .select('*')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+      const { data, error } = await getUserVideoAudits(user!.id);
 
       if (error) throw error;
 
-      setAudits(data || []);
+      // Cast to component-specific type
+      setAudits((data || []) as VideoAudit[]);
     } catch (err: any) {
       console.error('Error fetching video audits:', err);
       setError(err.message);
@@ -349,7 +347,7 @@ export function UserVideoAuditsView() {
                       {selectedAudit.audit_data.audience_questions.map((question, idx) => (
                         <li key={idx} className="text-sm text-blue-200 flex items-start gap-2">
                           <span className="text-blue-400 mt-1">•</span>
-                          <span>{question}</span>
+                          <span>{typeof question === 'string' ? question : question?.question || JSON.stringify(question)}</span>
                         </li>
                       ))}
                     </ul>
@@ -357,17 +355,21 @@ export function UserVideoAuditsView() {
                 )}
 
                 {/* Product Feedback */}
-                {selectedAudit.audit_data?.product_feedback?.length > 0 && (
+                {selectedAudit.audit_data?.product_feedback && (
                   <div className="bg-green-900/20 border border-green-800 rounded-lg p-4">
                     <h4 className="font-semibold text-green-400 mb-3">Feedback Produktowy</h4>
-                    <ul className="space-y-2">
-                      {selectedAudit.audit_data.product_feedback.map((feedback, idx) => (
-                        <li key={idx} className="text-sm text-green-200 flex items-start gap-2">
-                          <span className="text-green-400 mt-1">•</span>
-                          <span>{feedback}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {Array.isArray(selectedAudit.audit_data.product_feedback) ? (
+                      <ul className="space-y-2">
+                        {selectedAudit.audit_data.product_feedback.map((feedback: any, idx: number) => (
+                          <li key={idx} className="text-sm text-green-200 flex items-start gap-2">
+                            <span className="text-green-400 mt-1">•</span>
+                            <span>{typeof feedback === 'string' ? feedback : JSON.stringify(feedback)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-green-200">{selectedAudit.audit_data.product_feedback.summary || JSON.stringify(selectedAudit.audit_data.product_feedback)}</p>
+                    )}
                   </div>
                 )}
 
@@ -379,7 +381,7 @@ export function UserVideoAuditsView() {
                       {selectedAudit.audit_data.content_ideas_from_comments.map((idea, idx) => (
                         <li key={idx} className="text-sm text-purple-200 flex items-start gap-2">
                           <span className="text-purple-400 mt-1">•</span>
-                          <span>{idea}</span>
+                          <span>{typeof idea === 'string' ? idea : idea?.idea_title || JSON.stringify(idea)}</span>
                         </li>
                       ))}
                     </ul>
@@ -387,17 +389,21 @@ export function UserVideoAuditsView() {
                 )}
 
                 {/* Controversies */}
-                {selectedAudit.audit_data?.controversies_and_risks?.length > 0 && (
+                {selectedAudit.audit_data?.controversies_and_risks && (
                   <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
                     <h4 className="font-semibold text-red-400 mb-3">Kontrowersje i Ryzyka</h4>
-                    <ul className="space-y-2">
-                      {selectedAudit.audit_data.controversies_and_risks.map((risk, idx) => (
-                        <li key={idx} className="text-sm text-red-200 flex items-start gap-2">
-                          <span className="text-red-400 mt-1">•</span>
-                          <span>{risk}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {Array.isArray(selectedAudit.audit_data.controversies_and_risks) ? (
+                      <ul className="space-y-2">
+                        {selectedAudit.audit_data.controversies_and_risks.map((risk: any, idx: number) => (
+                          <li key={idx} className="text-sm text-red-200 flex items-start gap-2">
+                            <span className="text-red-400 mt-1">•</span>
+                            <span>{typeof risk === 'string' ? risk : JSON.stringify(risk)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-red-200">{selectedAudit.audit_data.controversies_and_risks.description || JSON.stringify(selectedAudit.audit_data.controversies_and_risks)}</p>
+                    )}
                   </div>
                 )}
 

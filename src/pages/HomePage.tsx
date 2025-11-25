@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../services';
 import { ScraperForm } from '../components/ScraperForm';
 import { ResultsTable } from '../components/ResultsTable';
 import { CommentsTable } from '../components/CommentsTable';
@@ -253,6 +253,8 @@ export function HomePage() {
       // For video mode with comments scraper, automatically trigger video analysis
       if (formData.mode === 'video' && items.length > 0) {
         console.log('📹 Video mode detected - automatically triggering video analysis');
+        console.log('📹 Full API response data:', data);
+        console.log('📹 Video info from response:', data?.videoInfo || data?.video || 'no video info');
 
         // Comments are already in items array
         const comments = items;
@@ -327,8 +329,23 @@ export function HomePage() {
 
             const analyzerData = await analyzerResponse.json();
 
+            // Try to extract video thumbnail from TikTok oEmbed API
+            let videoThumbnail = '';
+            try {
+              const oEmbedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(videoUrl)}`;
+              const oEmbedResponse = await fetch(oEmbedUrl);
+              if (oEmbedResponse.ok) {
+                const oEmbedData = await oEmbedResponse.json();
+                videoThumbnail = oEmbedData.thumbnail_url || '';
+                console.log('📹 Got thumbnail from oEmbed:', videoThumbnail);
+              }
+            } catch (oEmbedError) {
+              console.log('📹 Could not fetch oEmbed thumbnail:', oEmbedError);
+            }
+
             setVideoAuditData({
               videoUrl: videoUrl,
+              videoThumbnail: videoThumbnail,
               videoCaption: '', // We don't have caption from URL scraping
               authorUsername: '', // We don't have author from URL scraping
               metrics: analyzerData.metrics,
@@ -539,11 +556,28 @@ export function HomePage() {
                 {/* Show different tables based on mode */}
                 {currentMode === 'video' ? (
                   // Comments Table for video mode
-                  // Results in video mode are comments, cast to any to avoid type mismatch
-                  <CommentsTable
-                    comments={results as any}
-                    auditData={videoAuditData?.auditData}
-                  />
+                  <>
+                    {/* Video Audit Loading/Error - above comments table */}
+                    {videoAuditLoading && (
+                      <div id="video-audit-section">
+                        <TikTokLoader message="Analizowanie komentarzy..." />
+                      </div>
+                    )}
+
+                    {videoAuditError && (
+                      <div id="video-audit-section" className="bg-red-950 border border-red-800 rounded-lg p-4">
+                        <p className="text-red-400 text-sm">{videoAuditError}</p>
+                      </div>
+                    )}
+
+                    {/* Comments table with audit data - only pass auditData after loading completes */}
+                    <CommentsTable
+                      comments={results as any}
+                      auditData={!videoAuditLoading ? videoAuditData?.auditData : undefined}
+                      videoUrl={!videoAuditLoading ? videoAuditData?.videoUrl : undefined}
+                      videoThumbnail={!videoAuditLoading ? videoAuditData?.videoThumbnail : undefined}
+                    />
+                  </>
                 ) : (
                   // Standard Results Table for other modes
                   <>
@@ -555,19 +589,6 @@ export function HomePage() {
                       onVideoHighlight={handleVideoHighlight}
                     />
                   </>
-                )}
-
-                {/* Video Audit Section */}
-                {videoAuditError && (
-                  <div id="video-audit-section" className="bg-red-950 border border-red-800 rounded-lg p-4">
-                    <p className="text-red-400 text-sm">{videoAuditError}</p>
-                  </div>
-                )}
-
-                {videoAuditLoading && (
-                  <div id="video-audit-section">
-                    <TikTokLoader message="Analizowanie wideo..." />
-                  </div>
                 )}
 
               </>

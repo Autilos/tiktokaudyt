@@ -102,15 +102,15 @@ export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }
   const getModeIcon = (modeType: string) => {
     switch (modeType) {
       case 'hashtag':
-        return <Hash className="w-4 h-4" />;
+        return <Hash className="w-5 h-5" />;
       case 'profile':
-        return <User className="w-4 h-4" />;
+        return <User className="w-5 h-5" />;
       case 'search':
-        return <Search className="w-4 h-4" />;
+        return <Search className="w-5 h-5" />;
       case 'video':
-        return <Video className="w-4 h-4" />;
+        return <Video className="w-5 h-5" />;
       default:
-        return <Hash className="w-4 h-4" />;
+        return <Hash className="w-5 h-5" />;
     }
   };
 
@@ -146,15 +146,12 @@ export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4 text-gray-100">Konfiguracja Wyszukiwania</h2>
+      <h2 className="text-lg font-semibold mb-4 text-gray-100">Wybierz wyszukiwanie</h2>
       
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Mode Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Tryb Wyszukiwania
-          </label>
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-1 gap-3">
             {(['hashtag', 'profile', 'search', 'video'] as const).map((modeType) => (
               <button
                 key={modeType}
@@ -164,14 +161,14 @@ export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }
                   console.log('Button clicked:', modeType);
                   handleModeChange(modeType);
                 }}
-                className={`flex items - center justify - center gap - 2 px - 3 py - 2 rounded - lg border transition - all ${
+                className={`flex items-center justify-start gap-3 px-4 py-3 rounded-lg border transition-all ${
   mode === modeType
     ? 'bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white'
     : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-} `}
+}`}
               >
                 {getModeIcon(modeType)}
-                <span className="text-sm font-medium">{getModeLabel(modeType)}</span>
+                <span className="text-base font-medium">{getModeLabel(modeType)}</span>
               </button>
             ))}
           </div>
@@ -181,8 +178,8 @@ export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             {mode === 'hashtag' && 'Hashtagi'}
-            {mode === 'profile' && 'Nazwy Profili'}
-            {mode === 'search' && 'Zapytania Wyszukiwania'}
+            {mode === 'profile' && 'Nazwa profilu'}
+            {mode === 'search' && 'Wpisz zapytanie'}
             {mode === 'video' && 'URL Wideo'}
             <span className="text-gray-500 text-xs ml-2">(jeden w linii)</span>
           </label>
@@ -256,20 +253,20 @@ export function ScraperForm({ onScrape, loading, maxResults = 10, onModeChange }
         <button
           type="submit"
           disabled={loading}
-          className={`w - full py - 3 px - 4 rounded - lg font - medium transition - all flex items - center justify - center gap - 2 ${
+          className={`w-full py-4 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-3 text-base ${
   loading
     ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-    : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-900/50'
-} `}
+    : 'bg-gradient-to-r from-green-400 to-cyan-400 hover:from-green-300 hover:to-cyan-300 text-gray-900 shadow-lg shadow-cyan-500/50'
+}`}
         >
           {loading ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-500 border-t-gray-300"></div>
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-500 border-t-gray-300"></div>
               Audyt...
             </>
           ) : (
             <>
-              <Play className="w-4 h-4" />
+              <Play className="w-5 h-5" />
               Rozpocznij Audyt
             </>
           )}

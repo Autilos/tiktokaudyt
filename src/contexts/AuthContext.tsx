@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, createAppUser, createSubscription } from '../services';
 import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -48,21 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
 
-    // Create app_user and default subscription
+    // Create app_user and default subscription using services
     if (data.user) {
-      await supabase.from('app_users').insert({
-        user_id: data.user.id,
-        email: data.user.email!,
-        role: 'user'
-      });
-
-      await supabase.from('subscriptions').insert({
-        user_id: data.user.id,
-        plan: 'free',
-        limit_events: 30,
-        price_pln: 0,
-        status: 'active'
-      });
+      await createAppUser(data.user.id, data.user.email!, 'user');
+      await createSubscription(data.user.id, 'free', 30, 0);
     }
   }
 

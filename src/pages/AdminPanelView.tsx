@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import {
+  isAdmin,
+  getAllAppUsers,
+  getTotalProfileAuditsCount,
+  getRecentProfileAudits
+} from '../services';
 import { ArrowLeft, Users, FileCheck, TrendingUp, Calendar, User as UserIcon } from 'lucide-react';
 
 interface UserStats {
   user_id: string;
   email: string;
-  created_at: string;
+  created_at?: string;
   total_audits: number;
   recent_audits: {
     id: string;
@@ -35,48 +40,30 @@ export function AdminPanelView() {
     try {
       setLoading(true);
 
-      // Check if user is admin
-      const { data: userData, error: userError } = await supabase
-        .from('app_users')
-        .select('role')
-        .eq('user_id', user?.id)
-        .single();
+      // Check if user is admin using service
+      const isAdminUser = await isAdmin(user!.id);
 
-      if (userError) throw userError;
-
-      if (userData?.role !== 'admin') {
+      if (!isAdminUser) {
         setError('Brak uprawnień administratora');
         setLoading(false);
         return;
       }
 
-      // Fetch all users
-      const { data: appUsers, error: usersError } = await supabase
-        .from('app_users')
-        .select('user_id, email, created_at')
-        .order('created_at', { ascending: false });
+      // Fetch all users using service
+      const { data: appUsers, error: usersError } = await getAllAppUsers();
 
       if (usersError) throw usersError;
 
       setTotalUsers(appUsers?.length || 0);
 
-      // Fetch audits count
-      const { count: auditsCount, error: auditsCountError } = await supabase
-        .from('profile_audits')
-        .select('*', { count: 'exact', head: true });
-
-      if (auditsCountError) throw auditsCountError;
-      setTotalAudits(auditsCount || 0);
+      // Fetch audits count using service
+      const auditsCount = await getTotalProfileAuditsCount();
+      setTotalAudits(auditsCount);
 
       // Fetch audits for each user
       const usersWithStats = await Promise.all(
         (appUsers || []).map(async (appUser) => {
-          const { data: audits, error: auditsError } = await supabase
-            .from('profile_audits')
-            .select('id, created_at, profile_username, audit_data')
-            .eq('user_id', appUser.user_id)
-            .order('created_at', { ascending: false })
-            .limit(5);
+          const { data: audits, error: auditsError } = await getRecentProfileAudits(appUser.user_id, 5);
 
           if (auditsError) {
             console.error('Error fetching audits for user:', auditsError);
@@ -91,8 +78,8 @@ export function AdminPanelView() {
             ...appUser,
             total_audits: audits?.length || 0,
             recent_audits: (audits || []).map(audit => ({
-              id: audit.id,
-              created_at: audit.created_at,
+              id: audit.id!,
+              created_at: audit.created_at!,
               profile_username: audit.profile_username,
               profile_score: audit.audit_data?.profile_score || 0
             }))

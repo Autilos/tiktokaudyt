@@ -26,10 +26,11 @@ export function TikTokLoader({ message = 'Audyt danych TikTok...' }: TikTokLoade
     const interval = setInterval(() => {
       const word = words[wordId % words.length];
       const x = Math.random() * 60 + 20; // 20-80% of container width
+      const uniqueId = Date.now() + wordId; // Ensure unique ID
 
       setFloatingWords((prev) => [
         ...prev.slice(-8), // Keep only last 8 words
-        { id: wordId, word, x, delay: Math.random() * 0.3 }
+        { id: uniqueId, word, x, delay: Math.random() * 0.3 }
       ]);
 
       wordId++;
