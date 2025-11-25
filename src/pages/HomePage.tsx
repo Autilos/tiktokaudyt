@@ -276,39 +276,31 @@ export function HomePage() {
             console.log('📊 Auto-analyzing video:', videoUrl);
             console.log('📊 Comments count:', comments.length);
 
-            // Use refreshSession to ensure we have a valid token
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-            let session = refreshData?.session;
+            // Try to get session, but don't require it (demo mode works without)
+            const { data: { session } } = await supabase.auth.getSession();
 
-            console.log('📊 Session refresh:', {
+            console.log('📊 Session status:', {
               hasSession: !!session,
               hasAccessToken: !!session?.access_token,
-              tokenExpiry: session?.expires_at,
-              refreshError: refreshError?.message
+              mode: session ? 'authenticated' : 'demo'
             });
-
-            if (!session) {
-              // Fallback to getSession if refresh fails
-              const { data: { session: fallbackSession } } = await supabase.auth.getSession();
-              if (!fallbackSession) {
-                throw new Error('Brak sesji użytkownika. Zaloguj się ponownie.');
-              }
-              session = fallbackSession;
-            }
 
             const analyzerUrl = '/api/video-analyzer';
             console.log('📊 Calling video-analyzer at:', analyzerUrl);
-            console.log('📊 Token preview:', session.access_token?.substring(0, 50) + '...');
-            console.log('📊 Token length:', session.access_token?.length);
+
+            // Build headers - only add Authorization if we have a session
+            const analyzerHeaders: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (session?.access_token) {
+              analyzerHeaders['Authorization'] = `Bearer ${session.access_token}`;
+            }
 
             const analyzerResponse = await fetch(
               analyzerUrl,
               {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${session.access_token}`,
-                },
+                headers: analyzerHeaders,
                 body: JSON.stringify({
                   videoId: null, // We don't have video ID from URL scraping
                   videoUrl: videoUrl,

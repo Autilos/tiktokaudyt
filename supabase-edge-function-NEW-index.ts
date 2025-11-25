@@ -48,69 +48,49 @@ serve(async (req) => {
     // Client for database operations - uses service role to bypass RLS
     const supabaseClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get authenticated user via direct API call
+    // Get authenticated user via direct API call (optional - demo mode works without)
     const authHeader = req.headers.get("Authorization");
     console.log('🔐 Checking authentication...');
     console.log('  - Authorization header:', authHeader ? 'PRESENT' : 'MISSING');
 
+    let user: { id: string; email?: string } | null = null;
+    let isDemoMode = false;
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('❌ No valid Authorization header');
-      return new Response(
-        JSON.stringify({
-          error: "Unauthorized",
-          details: "Missing or invalid Authorization header"
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
+      // Demo mode - no authentication required
+      console.log('🎭 Demo mode: No authentication header, proceeding without user');
+      isDemoMode = true;
+    } else {
+      const token = authHeader.replace('Bearer ', '');
+
+      // Verify user via Supabase Auth API
+      const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'apikey': serviceRoleKey
         }
-      );
-    }
+      });
 
-    const token = authHeader.replace('Bearer ', '');
+      if (!userResponse.ok) {
+        // Token invalid - fallback to demo mode
+        console.warn('⚠️ Auth verification failed, falling back to demo mode:', userResponse.status);
+        isDemoMode = true;
+      } else {
+        user = await userResponse.json();
+        console.log('👤 Auth result:', { hasUser: !!user, userId: user?.id });
 
-    // Verify user via Supabase Auth API
-    const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': serviceRoleKey
+        if (!user || !user.id) {
+          console.warn('⚠️ No user found, falling back to demo mode');
+          isDemoMode = true;
+        }
       }
-    });
-
-    if (!userResponse.ok) {
-      const errorText = await userResponse.text();
-      console.error('❌ Auth verification failed:', userResponse.status, errorText);
-      return new Response(
-        JSON.stringify({
-          error: "Unauthorized",
-          details: "Token verification failed",
-          status: userResponse.status
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      );
     }
 
-    const user = await userResponse.json();
-    console.log('👤 Auth result:', { hasUser: !!user, userId: user?.id });
-
-    if (!user || !user.id) {
-      console.error('❌ Authentication failed - no user found');
-      return new Response(
-        JSON.stringify({
-          error: "Unauthorized",
-          details: "No user found - token may be expired or invalid"
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      );
+    if (isDemoMode) {
+      console.log('🎭 Running in demo mode (no user tracking)');
+    } else {
+      console.log('✅ User authenticated:', user?.id);
     }
-
-    console.log('✅ User authenticated:', user.id);
 
     const { videoId, videoUrl, comments, profileVideos } = await req.json();
 
@@ -422,9 +402,9 @@ Odpowiedz TYLKO w formacie JSON, bez dodatkowego tekstu. Zacznij od { i zakończ
 
     console.log("📈 Calculated comment stats:", commentStatsForDB);
 
-    // Save to database
+    // Save to database (skip user_id in demo mode - it's UUID type)
     const auditRecord = {
-      user_id: user.id,
+      user_id: user?.id || null,
       video_id: video?.id || null,
       video_url: videoUrl || video?.webVideoUrl || '',
       video_caption: video?.text || "",
@@ -487,7 +467,7 @@ Odpowiedz TYLKO w formacie JSON, bez dodatkowego tekstu. Zacznij od { i zakończ
       is_reply: !!comment.repliesToId,
       replies_to_id: comment.repliesToId || null,
       create_time_iso: comment.createTimeISO || null,
-      user_id: user.id,
+      user_id: user?.id || null,
       session_id: savedAudit.id
     }));
 
