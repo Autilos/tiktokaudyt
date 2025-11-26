@@ -154,8 +154,18 @@ export function HomePage() {
 
       console.log('📤 Sending request to tiktok-scraper:', requestBody);
 
+      // Determine API URL - use direct Supabase Edge Function URL on production (GitHub Pages)
+      // or local proxy in development
+      const isProduction = import.meta.env.PROD;
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = isProduction && apiBaseUrl
+        ? apiBaseUrl  // Direct Supabase Edge Function URL
+        : '/api/tiktok-scraper';  // Local proxy
+
+      console.log('📤 API URL:', apiUrl, '(production:', isProduction, ')');
+
       try {
-        response = await fetch('/api/tiktok-scraper', {
+        response = await fetch(apiUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody)
@@ -285,12 +295,18 @@ export function HomePage() {
               mode: session ? 'authenticated' : 'demo'
             });
 
-            const analyzerUrl = '/api/video-analyzer';
-            console.log('📊 Calling video-analyzer at:', analyzerUrl);
+            // Use direct Edge Function URL on production (GitHub Pages) or local proxy in development
+            const videoAnalyzerBaseUrl = import.meta.env.VITE_VIDEO_ANALYZER_URL || '';
+            const analyzerUrl = isProduction && videoAnalyzerBaseUrl
+              ? videoAnalyzerBaseUrl  // Direct Supabase Edge Function URL
+              : '/api/video-analyzer';  // Local proxy
+            console.log('📊 Calling video-analyzer at:', analyzerUrl, '(production:', isProduction, ')');
 
             // Build headers - only add Authorization if we have a session
+            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
             const analyzerHeaders: Record<string, string> = {
               'Content-Type': 'application/json',
+              'apikey': anonKey
             };
             if (session?.access_token) {
               analyzerHeaders['Authorization'] = `Bearer ${session.access_token}`;
