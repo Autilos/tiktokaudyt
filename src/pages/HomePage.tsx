@@ -162,7 +162,13 @@ export function HomePage() {
         ? apiBaseUrl  // Direct Supabase Edge Function URL
         : '/api/tiktok-scraper';  // Local proxy
 
-      console.log('📤 API URL:', apiUrl, '(production:', isProduction, ')');
+      console.log('📤 Environment debug:', {
+        isProduction,
+        apiBaseUrl: apiBaseUrl || '(empty)',
+        apiUrl,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '(empty)'
+      });
 
       try {
         response = await fetch(apiUrl, {
