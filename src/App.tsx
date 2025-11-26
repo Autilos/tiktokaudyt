@@ -12,6 +12,9 @@ import { UserAuditsView } from './pages/UserAuditsView';
 import { UserVideoAuditsView } from './pages/UserVideoAuditsView';
 import { AdminPanelView } from './pages/AdminPanelView';
 
+// Get basename for GitHub Pages deployment
+const basename = import.meta.env.BASE_URL || '/';
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
@@ -32,7 +35,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <Router>
+    <Router basename={basename}>
       <AuthProvider>
         <Routes>
           <Route path="/" element={<HomePage />} />
