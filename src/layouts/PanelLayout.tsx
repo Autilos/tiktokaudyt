@@ -39,7 +39,7 @@ export function PanelLayout() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <Link to="/" className="flex items-center gap-3">
-                <img src="/tokacademy_logo_rozowe.png" alt="TokAcademy" className="w-9 h-9 object-cover rounded-lg" />
+                <img src={`${import.meta.env.BASE_URL}tokacademy_logo_rozowe.png`} alt="TokAcademy" className="w-9 h-9 object-cover rounded-lg" />
                 <div>
                   <h1 className="text-xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
                     TikTok Audyt

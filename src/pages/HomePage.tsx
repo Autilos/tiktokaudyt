@@ -428,7 +428,7 @@ export function HomePage() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src="/tokacademy_logo_rozowe.png" alt="TokAcademy" className="w-10 h-10 object-cover rounded-lg" />
+              <img src={`${import.meta.env.BASE_URL}tokacademy_logo_rozowe.png`} alt="TokAcademy" className="w-10 h-10 object-cover rounded-lg" />
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
                   TikTok Audyt
@@ -616,7 +616,7 @@ export function HomePage() {
             {/* Empty State */}
             {!loading && !error && results.length === 0 && (
               <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center">
-                <img src="/tokacademy_logo_rozowe.png" alt="TokAcademy" className="w-20 h-20 mx-auto mb-4 opacity-50 object-cover rounded-lg" />
+                <img src={`${import.meta.env.BASE_URL}tokacademy_logo_rozowe.png`} alt="TokAcademy" className="w-20 h-20 mx-auto mb-4 opacity-50 object-cover rounded-lg" />
                 <h3 className="text-lg font-semibold text-gray-300 mb-2">Brak wyników</h3>
                 <p className="text-gray-500">Wypełnij formularz i kliknij "Rozpocznij Audyt" aby rozpocząć</p>
               </div>
